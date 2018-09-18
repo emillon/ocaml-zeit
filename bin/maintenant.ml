@@ -1,6 +1,6 @@
 let run_list_deployments token =
   let open Zeit.Let.Lwt in
-  let client = {Zeit.Client.token; host = "api.zeit.co"} in
+  let client = Zeit.Client.make ~token () in
   Lwt_main.run
     ( match%bind Zeit.Client.list_deployments client with
     | Ok deployments ->
