@@ -1,0 +1,6 @@
+(library
+ (name zeit)
+ (libraries yojson ppx_deriving_yojson.runtime lwt uri cohttp-lwt-unix)
+ (preprocess (pps ppx_deriving.std ppx_deriving_yojson ppx_let))
+ (flags :standard -w -39)
+)

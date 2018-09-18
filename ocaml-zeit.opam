@@ -1,0 +1,17 @@
+opam-version: "1.2"
+maintainer: "Etienne Millon <me@emillon.org>"
+authors: "Etienne Millon <me@emillon.org>"
+homepage: "https://github.com/emillon/ocaml-zeit"
+bug-reports: "https://github.com/emillon/ocaml-zeit/issues"
+license: "BSD-2"
+dev-repo: "https://github.com/emillon/ocaml-zeit.git"
+doc: "https://emillon.github.io/ocaml-zeit/doc"
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]
+build-test: [
+  ["dune" "runtest" "-p" name "-j" jobs]
+]
+depends: [
+]

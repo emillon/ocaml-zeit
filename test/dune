@@ -1,0 +1,5 @@
+(test
+ (name test_all)
+ (libraries oUnit zeit)
+ (preprocess (pps ppx_deriving.std))
+)
