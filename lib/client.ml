@@ -37,6 +37,8 @@ let request ~client ?(extra_headers = []) meth route body =
 
 
 let parse_and_convert s of_yojson =
+  Lwt.return
+  @@
   match Yojson.Safe.from_string s with
   | exception Yojson.Json_error _ ->
       Error Error.Json_error
@@ -48,19 +50,21 @@ let parse_and_convert s of_yojson =
         Error Error.Deserialization_error )
 
 
-let list_deployments client =
+let body_to_string body =
   let open Let.Lwt in
-  let%bind req_rv = request ~client `GET Deployment_list "" in
-  match req_rv with
-  | Error e ->
-      Lwt.return_error e
-  | Ok body ->
-      let%map body = Cohttp_lwt.Body.to_string body in
-      parse_and_convert body Deployment.Api_responses.list_result_of_yojson
+  let%map s = Cohttp_lwt.Body.to_string body in
+  Ok s
+
+
+let list_deployments client =
+  let open Let.Lwt_result in
+  let%bind cohttp_body = request ~client `GET Deployment_list "" in
+  let%bind body = body_to_string cohttp_body in
+  parse_and_convert body Deployment.Api_responses.list_result_of_yojson
 
 
 let post_file client s =
-  let open Let.Lwt in
+  let open Let.Lwt_result in
   let sha1 = Digestif.SHA1.to_hex @@ Digestif.SHA1.digest_string s in
   let file_size = string_of_int @@ String.length s in
   let extra_headers =
@@ -69,8 +73,37 @@ let post_file client s =
     ; ("x-now-digest", sha1)
     ; ("x-now-size", file_size) ]
   in
-  match%map request ~client ~extra_headers `POST Post_file s with
-  | Ok (_ : Cohttp_lwt.Body.t) ->
-      Ok sha1
-  | Error _ as e ->
-      e
+  let%map _ : Cohttp_lwt.Body.t =
+    request ~client ~extra_headers `POST Post_file s
+  in
+  sha1
+
+
+type file = string * string * int
+
+type file_repr =
+  { file : string
+  ; sha : string
+  ; size : int }
+[@@deriving to_yojson]
+
+let file_to_yojson (file, sha, size) = file_repr_to_yojson {file; sha; size}
+
+type create_deployment_body =
+  { name : string
+  ; public : bool
+  ; deploymentType : string
+  ; files : file list }
+[@@deriving to_yojson]
+
+let create_deployment client ~name ~files =
+  let open Let.Lwt_result in
+  let body = {name; public = true; deploymentType = "STATIC"; files} in
+  let encoded_body =
+    Yojson.Safe.to_string @@ create_deployment_body_to_yojson body
+  in
+  let%bind (cohttp_body : Cohttp_lwt.Body.t) =
+    request ~client ~extra_headers:[] `POST Create_deployment encoded_body
+  in
+  let%bind body = body_to_string cohttp_body in
+  parse_and_convert body Deployment.Api_responses.create_result_of_yojson

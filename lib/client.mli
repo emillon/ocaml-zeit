@@ -13,3 +13,9 @@ val make :
 val list_deployments : t -> (Deployment.t list, Error.t) result Lwt.t
 
 val post_file : t -> string -> (string, Error.t) result Lwt.t
+
+val create_deployment :
+     t
+  -> name:string
+  -> files:(string * string * int) list
+  -> (Deployment.Api_responses.create_result, Error.t) result Lwt.t

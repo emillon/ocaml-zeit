@@ -116,4 +116,70 @@ let test_post_file =
            ~expected:(Error Http_error)) ]
 
 
-let suite = cases "client" [test_list_deployments; test_post_file]
+(*
+public	Boolean	Yes	A boolean indicating if the deployment is public. For every deployment done under the OSS plan, this needs to be set to true.
+name	String	Yes	A string with the project name used in the deployment URL.
+deploymentType	Enum	Yes	A string indicating the type of deployment, it could be NPM, DOCKER or STATIC.
+files	List	Yes	A list of maps with the files you want in the deploy.
+*)
+
+let test_create_deployment =
+  let test ~name ~files ~body ~expected ~expected_body_json ctxt =
+    let expected_body = Yojson.Safe.to_string expected_body_json in
+    with_client ~ctxt ~status:`OK ~body
+      (fun client ->
+        let open Zeit.Let.Lwt in
+        let%map got = Zeit.Client.create_deployment client ~name ~files in
+        assert_equal ~ctxt
+          ~cmp:
+            [%eq:
+              ( Zeit.Deployment.Api_responses.create_result
+              , Zeit.Error.t )
+              result]
+          ~printer:
+            [%show:
+              ( Zeit.Deployment.Api_responses.create_result
+              , Zeit.Error.t )
+              result] expected got )
+      ~expected_meth:`POST ~expected_extra_headers:[]
+      ~expected_uri:"https://api.zeit.co/v3/now/deployments" ~expected_body
+  in
+  let name = "my-instant-deployment" in
+  let file_name = "index.html" in
+  let file_sha = "9d8b952309b28f468919f4a585e18b63a14457f2" in
+  let file_size = 161 in
+  let file = (file_name, file_sha, file_size) in
+  let deploymentId = "ID" in
+  let url = "URL" in
+  let readyState = "READYSTATE" in
+  let create_result =
+    {Zeit.Deployment.Api_responses.deploymentId; url; readyState}
+  in
+  let create_result_body =
+    Cohttp_lwt.Body.of_string
+    @@ Yojson.Safe.to_string
+    @@ `Assoc
+         [ ("deploymentId", `String deploymentId)
+         ; ("url", `String url)
+         ; ("readyState", `String readyState) ]
+  in
+  cases "create_deployment"
+    [ case_lwt "OK"
+        (test ~name ~files:[file] ~body:create_result_body
+           ~expected:(Ok create_result)
+           ~expected_body_json:
+             (`Assoc
+               [ ("name", `String name)
+               ; ("public", `Bool true)
+               ; ("deploymentType", `String "STATIC")
+               ; ( "files"
+                 , `List
+                     [ `Assoc
+                         [ ("file", `String file_name)
+                         ; ("sha", `String file_sha)
+                         ; ("size", `Int file_size) ] ] ) ])) ]
+
+
+let suite =
+  cases "client"
+    [test_list_deployments; test_post_file; test_create_deployment]

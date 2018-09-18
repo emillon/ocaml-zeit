@@ -12,4 +12,10 @@ type t =
 
 module Api_responses : sig
   type list_result = t list [@@deriving of_yojson]
+
+  type create_result =
+    { deploymentId : string
+    ; url : string
+    ; readyState : string }
+  [@@deriving eq, show, of_yojson]
 end

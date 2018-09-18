@@ -32,4 +32,11 @@ module Api_responses = struct
     let open Let.Json in
     let%map {deployments} = list_result_repr_of_yojson json in
     deployments
+
+
+  type create_result =
+    { deploymentId : string
+    ; url : string
+    ; readyState : string }
+  [@@deriving eq, show, of_yojson]
 end
