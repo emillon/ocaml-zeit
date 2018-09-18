@@ -3,11 +3,23 @@ open OUnit2
 let cases = ( >::: )
 
 module Cohttp_mock = struct
-  let call mock headers uri = Mock.call mock (headers, uri)
+  let call mock meth headers uri ~body =
+    Mock.call mock (meth, headers, uri, body)
+
 
   let configure mock ~status ~body =
     Mock.configure mock
       (Mock.return (Lwt.return (Cohttp.Response.make ~status (), body)))
+
+
+  let equal_meth a b =
+    String.equal
+      (Cohttp.Code.string_of_method a)
+      (Cohttp.Code.string_of_method b)
+
+
+  let pp_meth fmt m =
+    Format.pp_print_string fmt (Cohttp.Code.string_of_method m)
 
 
   let equal_cohttp_header a b =
@@ -21,38 +33,48 @@ module Cohttp_mock = struct
 
   let pp_uri fmt u = Format.pp_print_string fmt (Uri.to_string u)
 
-  let assert_called_once_with ~ctxt expected_args mock =
-    Mock_ounit.assert_called_once_with ~ctxt ~cmp:[%eq: cohttp_header * Uri.t]
-      ~printer:[%show: cohttp_header * uri] expected_args mock
+  let assert_called_once_with ~ctxt ~expected_meth ~expected_headers
+      ~expected_uri ~expected_body mock =
+    let expected_args =
+      (expected_meth, expected_headers, expected_uri, expected_body)
+    in
+    Mock_ounit.assert_called_once_with ~ctxt
+      ~cmp:[%eq: meth * cohttp_header * Uri.t * string]
+      ~printer:[%show: meth * cohttp_header * uri * string] expected_args mock
 end
-
-let auth_headers token =
-  Cohttp.Header.of_list [("Authorization", "Bearer " ^ token)]
-
 
 let case_lwt s l = s >:: fun ctxt -> Lwt_main.run (l ctxt)
 
-let test_list_deployments =
+let with_client k ~ctxt ~status ~body ~expected_meth ~expected_extra_headers
+    ~expected_uri ~expected_body =
   let token = "TOKEN" in
-  let make_client () =
-    let mock = Mock.make ~name:"cohttp_get" in
-    let cohttp_get = Cohttp_mock.call mock in
-    let client = Zeit.Client.make ~cohttp_get ~token () in
-    (client, mock)
+  let expected_headers =
+    Cohttp.Header.of_list
+      (("Authorization", "Bearer " ^ token) :: expected_extra_headers)
   in
+  let mock = Mock.make ~name:"cohttp_call" in
+  Cohttp_mock.configure mock ~status ~body;
+  let cohttp_call = Cohttp_mock.call mock in
+  let client = Zeit.Client.make ~cohttp_call ~token () in
+  let result = k client in
+  Cohttp_mock.assert_called_once_with ~ctxt ~expected_meth ~expected_headers
+    ~expected_uri:(Uri.of_string expected_uri)
+    ~expected_body mock;
+  result
+
+
+let test_list_deployments =
   let test ?(status = `OK) ?(body = "") ~expected () ctxt =
-    let open Zeit.Let.Lwt in
-    let client, mock = make_client () in
     let body = Cohttp_lwt.Body.of_string body in
-    Cohttp_mock.configure mock ~status ~body;
-    let%map got = Zeit.Client.list_deployments client in
-    let expected_uri = "https://api.zeit.co/v2/now/deployments" in
-    let expected_args = (auth_headers token, Uri.of_string expected_uri) in
-    assert_equal ~ctxt
-      ~cmp:[%eq: (Zeit.Deployment.t list, Zeit.Error.t) result]
-      ~printer:[%show: (Zeit.Deployment.t list, Zeit.Error.t) result] expected
-      got;
-    Cohttp_mock.assert_called_once_with ~ctxt expected_args mock
+    with_client ~ctxt ~status ~body ~expected_meth:`GET
+      ~expected_extra_headers:[] ~expected_body:""
+      ~expected_uri:"https://api.zeit.co/v2/now/deployments" (fun client ->
+        let open Zeit.Let.Lwt in
+        let%map got = Zeit.Client.list_deployments client in
+        assert_equal ~ctxt
+          ~cmp:[%eq: (Zeit.Deployment.t list, Zeit.Error.t) result]
+          ~printer:[%show: (Zeit.Deployment.t list, Zeit.Error.t) result]
+          expected got )
   in
   cases "list_deployments"
     [ case_lwt "HTTP error"
@@ -64,4 +86,34 @@ let test_list_deployments =
     ]
 
 
-let suite = cases "client" [test_list_deployments]
+let test_post_file =
+  let test ~contents ~expected_size ~expected_sha1 ~expected ctxt =
+    let expected_extra_headers =
+      [ ("Content-Type", "application/octet-stream")
+      ; ("Content-Length", expected_size)
+      ; ("x-now-digest", expected_sha1)
+      ; ("x-now-size", expected_size) ]
+    in
+    let body = Cohttp_lwt.Body.empty in
+    with_client ~ctxt ~body ~expected_meth:`POST ~expected_extra_headers
+      ~expected_uri:"https://api.zeit.co/v2/now/files" ~expected_body:contents
+      (fun client ->
+        let open Zeit.Let.Lwt in
+        let%map got = Zeit.Client.post_file client contents in
+        assert_equal ~ctxt ~cmp:[%eq: (string, Zeit.Error.t) result]
+          ~printer:[%show: (string, Zeit.Error.t) result] expected got )
+  in
+  let contents = "hello" in
+  let contents_sha1 = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d" in
+  let expected_size = "5" in
+  let expected_sha1 = contents_sha1 in
+  cases "post_file"
+    [ case_lwt "OK"
+        (test ~contents ~status:`OK ~expected_size ~expected_sha1
+           ~expected:(Ok contents_sha1))
+    ; case_lwt "HTTP error"
+        (test ~contents ~status:`Unauthorized ~expected_size ~expected_sha1
+           ~expected:(Error Http_error)) ]
+
+
+let suite = cases "client" [test_list_deployments; test_post_file]
