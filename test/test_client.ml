@@ -116,13 +116,6 @@ let test_post_file =
            ~expected:(Error Http_error)) ]
 
 
-(*
-public	Boolean	Yes	A boolean indicating if the deployment is public. For every deployment done under the OSS plan, this needs to be set to true.
-name	String	Yes	A string with the project name used in the deployment URL.
-deploymentType	Enum	Yes	A string indicating the type of deployment, it could be NPM, DOCKER or STATIC.
-files	List	Yes	A list of maps with the files you want in the deploy.
-*)
-
 let test_create_deployment =
   let test ~name ~files ~body ~expected ~expected_body_json ctxt =
     let expected_body = Yojson.Safe.to_string expected_body_json in
