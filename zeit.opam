@@ -14,4 +14,12 @@ build-test: [
   ["dune" "runtest" "-p" name "-j" jobs]
 ]
 depends: [
+    "cohttp-lwt-unix"
+    "digestif"
+    "dune" {build & >= "1.2.0"}
+    "mock-ounit" {test}
+    "ounit" {test}
+    "ppx_deriving"
+    "ppx_deriving_yojson"
+    "ppx_let"
 ]
